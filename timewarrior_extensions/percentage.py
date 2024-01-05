@@ -1,8 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Percentage - Timewarrior report with %
-Author: Viliam Valent
+Author: Viliam Valent - additions Luke Avedon
 
 Usage:
 timew percentage
@@ -53,25 +53,33 @@ def separator_str(lengths: Lengths) -> str:
     return row_str(tuple(SEPARATOR_CHAR * length for length in lengths), lengths)
 
 
-def ghetto_tabulate(totals: ParsedData) -> None:
+def ghetto_tabulate(totals: ParsedData, subtotals: ParsedData) -> None:
     if not totals:
         error_and_exit("No data in selected interval.")
-    total = sum(x for x in totals.values())
-    header = (TAG_HEADER, DURATION_HEADER, PERCENTAGE_HEADER)
-    items = (
-        totals.items()
-        if not SORTED
-        else sorted(totals.items(), reverse=REVERSE, key=lambda row: row[SORT_BY])
-    )
-    body = [(tag, format_seconds(seconds), format_percentage(seconds / total)) for tag, seconds in items]
-    footer = ("Total", format_seconds(total), format_percentage(1))
-    lengths = tuple(max(len(row[i]) for row in chain([header, footer], body)) for i in range(3))
-    output = "\n".join(
-        [row_str(header, lengths), separator_str(lengths)]
-        + [row_str(row, lengths) for row in body]
-        + [separator_str(lengths), row_str(footer, lengths)]
-    )
-    print(output)
+
+    def display_report(totals):
+        total = sum(x for x in totals.values())
+        header = (TAG_HEADER, DURATION_HEADER, PERCENTAGE_HEADER)
+        items = (
+            totals.items()
+            if not SORTED
+            else sorted(totals.items(), reverse=REVERSE, key=lambda row: row[SORT_BY])
+        )
+        body = [(tag, format_seconds(seconds), format_percentage(seconds / total)) for tag, seconds in items]
+        footer = ("Total", format_seconds(total), format_percentage(1))
+        lengths = tuple(max(len(row[i]) for row in chain([header, footer], body)) for i in range(3))
+        output = "\n".join(
+            [row_str(header, lengths), separator_str(lengths)]
+            + [row_str(row, lengths) for row in body]
+            + [separator_str(lengths), row_str(footer, lengths)]
+        )
+        print(output)
+
+    display_report(totals)
+
+    if subtotals:
+        print("\nGrouped Tags Report:")
+        display_report(subtotals)
 
 
 def error_and_exit(error: str) -> None:
@@ -99,6 +107,8 @@ def parse(input_stream: TextIO) -> ParsedData:
     if "temp.report.tags" in config:
         error_and_exit("This report only works without tags.")
     totals: ParsedData = defaultdict(lambda: 0)
+    subtotals: ParsedData = defaultdict(lambda: 0)
+
     tracked = json.loads(body)
     for session in tracked:
         start = datetime.strptime(session["start"], DATEFORMAT)
@@ -107,14 +117,21 @@ def parse(input_stream: TextIO) -> ParsedData:
         else:
             end = datetime.utcnow()
         duration = int((end - start).total_seconds())
-        if not session.get("tags"):
+        tags = session.get("tags")
+        if not tags:
             totals["untagged"] += duration
         else:
             if len(session["tags"]) > 1:
                 error_and_exit("This report can only report one tag per session.")
-            totals[session["tags"][0]] += duration
-    return totals
+            tag = tags[0]
+            totals[tag] += duration
+            if '.' in tag:
+                grouped_tag = tag.split('.')[0]
+                subtotals[grouped_tag] += duration
+
+    return totals, subtotals
 
 
 if __name__ == "__main__":
-    ghetto_tabulate(parse(sys.stdin))
+    totals, subtotals = parse(sys.stdin)
+    ghetto_tabulate(totals, subtotals)
