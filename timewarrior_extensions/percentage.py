@@ -128,6 +128,8 @@ def parse(input_stream: TextIO) -> ParsedData:
             if '.' in tag:
                 grouped_tag = tag.split('.')[0]
                 subtotals[grouped_tag] += duration
+            else:
+                subtotals[grouped_tag] += duration
 
     return totals, subtotals
 
